@@ -16,586 +16,204 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="app" class="theme-light">
+    <div id="app">
         <!-- ローディング画面 -->
-        <div id="loading-screen" class="loading-screen">
-            <div class="loading-spinner"></div>
+        <div id="loading" class="loading-screen">
+            <div class="spinner"></div>
             <p>読み込み中...</p>
         </div>
 
         <!-- エラー表示 -->
         <div id="error-toast" class="error-toast hidden">
-            <span class="error-icon">⚠</span>
             <span class="error-message"></span>
-            <button class="error-close" onclick="hideError()">×</button>
+            <button onclick="hideError()" class="error-close">×</button>
         </div>
 
-        <!-- メイン画面群 -->
+        <!-- メイン画面 -->
         <div id="main-screen" class="main-screen hidden">
             <!-- ヘッダー -->
             <header class="header">
                 <div class="header-left">
-                    <button id="back-btn" class="back-btn hidden">
-                        <span class="back-icon">←</span>
-                        <span class="back-text">戻る</span>
+                    <button id="back-btn" class="back-btn hidden" onclick="goBack()">
+                        ← 戻る
                     </button>
                 </div>
-                
-                <div class="header-center">
-                    <h1 class="app-title">
-                        <span class="title-icon">🔔</span>
-                        <span id="screen-title">チャイム通知システム</span>
-                    </h1>
-                </div>
-                
-                <div class="header-actions">
-                    <button id="theme-toggle" class="icon-button" title="テーマ切替">
-                        <span class="theme-icon">🌙</span>
-                    </button>
-                    <button id="admin-toggle" class="icon-button" title="管理者設定">
-                        <span class="admin-icon">⚙️</span>
-                    </button>
+                <h1 class="title">
+                    🔔 <span id="screen-title">チャイム通知システム</span>
+                </h1>
+                <div class="header-right">
+                    <button id="theme-btn" onclick="toggleTheme()" class="icon-btn">🌙</button>
+                    <button id="admin-btn" onclick="toggleAdmin()" class="icon-btn">⚙️</button>
                 </div>
             </header>
 
-            <!-- プログレスバー -->
-            <div class="progress-container">
-                <div class="progress-bar">
-                    <div id="progress-fill" class="progress-fill"></div>
-                </div>
-                <div class="progress-steps">
-                    <div class="step active" id="step-company">
-                        <span class="step-icon">🏢</span>
-                        <span class="step-label">会社</span>
-                    </div>
-                    <div class="step" id="step-department">
-                        <span class="step-icon">🏬</span>
-                        <span class="step-label">部署</span>
-                    </div>
-                    <div class="step" id="step-member">
-                        <span class="step-icon">👤</span>
-                        <span class="step-label">担当者</span>
-                    </div>
-                    <div class="step" id="step-notification">
-                        <span class="step-icon">🔔</span>
-                        <span class="step-label">通知</span>
-                    </div>
-                </div>
+            <!-- プログレス -->
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress"></div>
             </div>
 
-            <!-- 会社選択画面 -->
-            <div id="company-screen" class="selection-screen active">
-                <div class="screen-content">
+            <!-- 画面コンテナ -->
+            <div class="screen-container">
+                <!-- 会社選択画面 -->
+                <div id="company-screen" class="screen active">
                     <div class="screen-header">
-                        <h2 class="screen-title">
-                            <span class="screen-icon">🏢</span>
-                            会社を選択してください
-                        </h2>
-                        <p class="screen-description">通知先の会社をお選びください</p>
+                        <h2>🏢 会社を選択してください</h2>
                     </div>
-                    
-                    <div class="search-container">
-                        <input type="text" id="company-search" class="search-input" placeholder="🔍 会社名で検索...">
+                    <div class="search-box">
+                        <input type="text" id="company-search" placeholder="🔍 会社名で検索..." onkeyup="searchCompanies()">
                     </div>
-                    
-                    <div class="button-grid-container">
-                        <div class="button-grid" id="company-grid">
-                            <!-- 動的に生成 -->
-                        </div>
-                    </div>
-                    
-                    <div class="pagination-container">
-                        <div class="pagination" id="company-pagination">
-                            <!-- ページネーション -->
-                        </div>
-                    </div>
+                    <div class="button-grid" id="company-grid"></div>
+                    <div class="pagination" id="company-pagination"></div>
                 </div>
-            </div>
 
-            <!-- 部署選択画面 -->
-            <div id="department-screen" class="selection-screen">
-                <div class="screen-content">
+                <!-- 部署選択画面 -->
+                <div id="department-screen" class="screen">
                     <div class="screen-header">
-                        <h2 class="screen-title">
-                            <span class="screen-icon">🏬</span>
-                            部署を選択してください
-                        </h2>
+                        <h2>🏬 部署を選択してください</h2>
                         <div class="breadcrumb">
-                            <span class="breadcrumb-item">
-                                <span class="breadcrumb-icon">🏢</span>
-                                <span id="selected-company-name">-</span>
-                            </span>
+                            <span>🏢 <span id="selected-company">-</span></span>
                         </div>
                     </div>
-                    
-                    <div class="search-container">
-                        <input type="text" id="department-search" class="search-input" placeholder="🔍 部署名で検索...">
+                    <div class="search-box">
+                        <input type="text" id="department-search" placeholder="🔍 部署名で検索..." onkeyup="searchDepartments()">
                     </div>
-                    
-                    <div class="button-grid-container">
-                        <div class="button-grid" id="department-grid">
-                            <!-- 動的に生成 -->
-                        </div>
-                    </div>
-                    
-                    <div class="pagination-container">
-                        <div class="pagination" id="department-pagination">
-                            <!-- ページネーション -->
-                        </div>
-                    </div>
+                    <div class="button-grid" id="department-grid"></div>
+                    <div class="pagination" id="department-pagination"></div>
                 </div>
-            </div>
 
-            <!-- 担当者選択画面 -->
-            <div id="member-screen" class="selection-screen">
-                <div class="screen-content">
+                <!-- 担当者選択画面 -->
+                <div id="member-screen" class="screen">
                     <div class="screen-header">
-                        <h2 class="screen-title">
-                            <span class="screen-icon">👤</span>
-                            担当者を選択してください
-                        </h2>
+                        <h2>👤 担当者を選択してください</h2>
                         <div class="breadcrumb">
-                            <span class="breadcrumb-item">
-                                <span class="breadcrumb-icon">🏢</span>
-                                <span id="member-selected-company">-</span>
-                            </span>
-                            <span class="breadcrumb-separator">›</span>
-                            <span class="breadcrumb-item">
-                                <span class="breadcrumb-icon">🏬</span>
-                                <span id="member-selected-department">-</span>
-                            </span>
+                            <span>🏢 <span id="selected-company2">-</span></span>
+                            <span> › 🏬 <span id="selected-department">-</span></span>
                         </div>
                     </div>
-                    
-                    <div class="search-container">
-                        <input type="text" id="member-search" class="search-input" placeholder="🔍 担当者名で検索...">
+                    <div class="search-box">
+                        <input type="text" id="member-search" placeholder="🔍 担当者名で検索..." onkeyup="searchMembers()">
                     </div>
-                    
-                    <div class="button-grid-container">
-                        <div class="button-grid" id="member-grid">
-                            <!-- 動的に生成 -->
-                        </div>
-                    </div>
-                    
-                    <div class="pagination-container">
-                        <div class="pagination" id="member-pagination">
-                            <!-- ページネーション -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 通知送信画面 -->
-            <div id="notification-screen" class="selection-screen">
-                <div class="screen-content">
-                    <div class="screen-header">
-                        <h2 class="screen-title">
-                            <span class="screen-icon">🔔</span>
-                            チャイム音を選択して通知
-                        </h2>
-                    </div>
-                    
-                    <!-- 選択内容サマリー -->
-                    <div class="selection-summary">
-                        <h3 class="summary-title">📋 選択内容確認</h3>
-                        <div class="summary-grid">
-                            <div class="summary-item">
-                                <span class="summary-icon">🏢</span>
-                                <div class="summary-content">
-                                    <span class="summary-label">会社</span>
-                                    <span class="summary-value" id="final-company-name">-</span>
-                                </div>
-                            </div>
-                            <div class="summary-item">
-                                <span class="summary-icon">🏬</span>
-                                <div class="summary-content">
-                                    <span class="summary-label">部署</span>
-                                    <span class="summary-value" id="final-department-name">-</span>
-                                </div>
-                            </div>
-                            <div class="summary-item">
-                                <span class="summary-icon">👤</span>
-                                <div class="summary-content">
-                                    <span class="summary-label">担当者</span>
-                                    <span class="summary-value" id="final-member-name">-</span>
-                                </div>
-                            </div>
-                            <div class="summary-item">
-                                <span class="summary-icon">🔔</span>
-                                <div class="summary-content">
-                                    <span class="summary-label">チャイム音</span>
-                                    <span class="summary-value" id="final-chime-name">未選択</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- チャイム選択 -->
-                    <div class="chime-selection">
-                        <h3 class="chime-title">🎵 チャイム音を選択</h3>
-                        <div class="button-grid-container">
-                            <div class="button-grid chime-grid" id="chime-grid">
-                                <!-- 動的に生成 -->
-                            </div>
-                        </div>
-                        <div class="pagination-container">
-                            <div class="pagination" id="chime-pagination">
-                                <!-- ページネーション -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 通知送信エリア -->
-                    <div class="action-area">
-                        <div class="status-info">
-                            <span id="online-status" class="status-indicator online">
-                                <span class="status-dot"></span>
-                                <span class="status-text">オンライン</span>
-                            </span>
-                        </div>
-                        
-                        <button id="notify-btn" class="notify-button ripple-button" disabled>
-                            <span class="button-content">
-                                <span class="notify-icon">🔔</span>
-                                <span class="button-text">通知送信</span>
-                            </span>
-                            <div class="button-loader hidden">
-                                <div class="loader-spinner"></div>
-                                <span class="loader-text">送信中...</span>
-                            </div>
-                        </button>
-                        
-                        <button id="reset-btn" class="reset-button">
-                            <span class="reset-icon">🔄</span>
-                            <span>最初から選択し直す</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 波形アニメーション -->
-            <div id="wave-container" class="wave-container hidden">
-                <div class="wave-background"></div>
-                <canvas id="wave-canvas" class="wave-canvas"></canvas>
-                <div class="wave-particles">
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                    <div class="particle"></div>
-                </div>
-                <div class="wave-text">🎵 チャイム再生中...</div>
-            </div>
-
-            <!-- 通知結果 -->
-            <div id="notification-result" class="notification-result hidden">
-                <div class="result-background"></div>
-                <div class="result-content">
-                    <div class="result-icon-container">
-                        <span class="result-icon"></span>
-                    </div>
-                    <div class="result-message-container">
-                        <span class="result-message"></span>
-                        <span class="result-detail"></span>
-                    </div>
+                    <div class="button-grid" id="member-grid"></div>
+                    <div class="pagination" id="member-pagination"></div>
                 </div>
             </div>
         </div>
 
         <!-- 管理者画面 -->
         <div id="admin-screen" class="admin-screen hidden">
-            <!-- 認証画面 -->
-            <div id="auth-screen" class="auth-screen">
-                <div class="auth-container">
-                    <div class="auth-card">
-                        <div class="auth-header">
-                            <span class="auth-icon">🔐</span>
-                            <h2>管理者認証</h2>
-                            <p>管理者パスワードを入力してください</p>
-                        </div>
-                        
-                        <div class="auth-form">
-                            <div class="form-group">
-                                <input type="password" id="admin-password" class="form-input" 
-                                       placeholder="パスワードを入力" autocomplete="current-password">
-                                <button id="auth-btn" class="auth-button">
-                                    <span class="auth-btn-icon">🔓</span>
-                                    <span>ログイン</span>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <button id="back-to-main" class="back-button">
-                            <span class="back-icon">←</span>
-                            <span>メイン画面に戻る</span>
-                        </button>
-                    </div>
+            <!-- 認証 -->
+            <div id="auth-panel" class="auth-panel">
+                <div class="auth-card">
+                    <h2>🔐 管理者認証</h2>
+                    <input type="password" id="admin-password" placeholder="パスワードを入力" onkeypress="handleAuthEnter(event)">
+                    <button onclick="adminLogin()" class="btn-primary">ログイン</button>
+                    <button onclick="toggleAdmin()" class="btn-secondary">戻る</button>
                 </div>
             </div>
 
-            <!-- 管理コンテンツ -->
-            <div id="admin-content" class="admin-content hidden">
+            <!-- 管理画面 -->
+            <div id="admin-panel" class="admin-panel hidden">
                 <header class="admin-header">
-                    <div class="admin-title">
-                        <span class="admin-title-icon">⚙️</span>
-                        <h1>管理者設定</h1>
-                    </div>
-                    <div class="header-actions">
-                        <button id="admin-theme-toggle" class="icon-button" title="テーマ切替">
-                            <span class="theme-icon">🌙</span>
-                        </button>
-                        <button id="admin-logout" class="icon-button" title="ログアウト">
-                            <span>🚪</span>
-                        </button>
-                    </div>
+                    <h1>⚙️ 管理者画面</h1>
+                    <button onclick="adminLogout()" class="btn-secondary">ログアウト</button>
                 </header>
 
                 <nav class="admin-nav">
-                    <button class="nav-tab active" data-tab="companies">
-                        <span class="nav-icon">🏢</span>
-                        <span class="nav-label">会社</span>
-                    </button>
-                    <button class="nav-tab" data-tab="departments">
-                        <span class="nav-icon">🏬</span>
-                        <span class="nav-label">部署</span>
-                    </button>
-                    <button class="nav-tab" data-tab="members">
-                        <span class="nav-icon">👤</span>
-                        <span class="nav-label">担当者</span>
-                    </button>
-                    <button class="nav-tab" data-tab="chimes">
-                        <span class="nav-icon">🔔</span>
-                        <span class="nav-label">チャイム音</span>
-                    </button>
-                    <button class="nav-tab" data-tab="channels">
-                        <span class="nav-icon">📢</span>
-                        <span class="nav-label">チャネル</span>
-                    </button>
+                    <button onclick="showAdminTab('companies')" class="nav-btn active" data-tab="companies">🏢 会社</button>
+                    <button onclick="showAdminTab('departments')" class="nav-btn" data-tab="departments">🏬 部署</button>
+                    <button onclick="showAdminTab('members')" class="nav-btn" data-tab="members">👤 担当者</button>
+                    <button onclick="showAdminTab('settings')" class="nav-btn" data-tab="settings">📢 設定</button>
                 </nav>
 
-                <div class="tab-content">
+                <div class="admin-content">
                     <!-- 会社管理 -->
-                    <div id="companies-tab" class="tab-panel active">
-                        <div class="panel-header">
+                    <div id="companies-tab" class="admin-tab active">
+                        <div class="tab-header">
                             <h3>🏢 会社管理</h3>
-                            <button id="add-company-btn" class="add-button">
-                                <span class="add-icon">+</span>
-                                <span>会社を追加</span>
-                            </button>
+                            <button onclick="showAddForm('company')" class="btn-success">+ 追加</button>
                         </div>
-                        
-                        <div class="add-form hidden" id="company-form">
-                            <div class="form-header">
-                                <h4>新しい会社を追加</h4>
-                            </div>
-                            <div class="form-body">
-                                <input type="text" id="company-name" class="form-input" placeholder="会社名を入力">
-                                <div class="form-actions">
-                                    <button id="save-company" class="save-button">
-                                        <span class="save-icon">💾</span>
-                                        <span>保存</span>
-                                    </button>
-                                    <button id="cancel-company" class="cancel-button">
-                                        <span class="cancel-icon">✕</span>
-                                        <span>キャンセル</span>
-                                    </button>
-                                </div>
+                        <div id="company-form" class="add-form hidden">
+                            <input type="text" id="company-name" placeholder="会社名を入力">
+                            <div class="form-actions">
+                                <button onclick="saveCompany()" class="btn-primary">保存</button>
+                                <button onclick="hideAddForm('company')" class="btn-secondary">キャンセル</button>
                             </div>
                         </div>
-                        
-                        <div class="items-container">
-                            <div id="companies-list" class="items-list">
-                                <!-- 動的に生成 -->
-                            </div>
-                        </div>
+                        <div id="companies-list" class="items-list"></div>
                     </div>
 
                     <!-- 部署管理 -->
-                    <div id="departments-tab" class="tab-panel hidden">
-                        <div class="panel-header">
+                    <div id="departments-tab" class="admin-tab">
+                        <div class="tab-header">
                             <h3>🏬 部署管理</h3>
-                            <button id="add-department-btn" class="add-button">
-                                <span class="add-icon">+</span>
-                                <span>部署を追加</span>
-                            </button>
+                            <button onclick="showAddForm('department')" class="btn-success">+ 追加</button>
                         </div>
-                        
-                        <div class="add-form hidden" id="department-form">
-                            <div class="form-header">
-                                <h4>新しい部署を追加</h4>
-                            </div>
-                            <div class="form-body">
-                                <select id="department-company" class="form-select">
-                                    <option value="">会社を選択してください</option>
-                                </select>
-                                <input type="text" id="department-name" class="form-input" placeholder="部署名を入力">
-                                <div class="form-actions">
-                                    <button id="save-department" class="save-button">
-                                        <span class="save-icon">💾</span>
-                                        <span>保存</span>
-                                    </button>
-                                    <button id="cancel-department" class="cancel-button">
-                                        <span class="cancel-icon">✕</span>
-                                        <span>キャンセル</span>
-                                    </button>
-                                </div>
+                        <div id="department-form" class="add-form hidden">
+                            <select id="department-company-select">
+                                <option value="">会社を選択</option>
+                            </select>
+                            <input type="text" id="department-name" placeholder="部署名を入力">
+                            <div class="form-actions">
+                                <button onclick="saveDepartment()" class="btn-primary">保存</button>
+                                <button onclick="hideAddForm('department')" class="btn-secondary">キャンセル</button>
                             </div>
                         </div>
-                        
-                        <div class="items-container">
-                            <div id="departments-list" class="items-list">
-                                <!-- 動的に生成 -->
-                            </div>
-                        </div>
+                        <div id="departments-list" class="items-list"></div>
                     </div>
 
                     <!-- 担当者管理 -->
-                    <div id="members-tab" class="tab-panel hidden">
-                        <div class="panel-header">
+                    <div id="members-tab" class="admin-tab">
+                        <div class="tab-header">
                             <h3>👤 担当者管理</h3>
-                            <button id="add-member-btn" class="add-button">
-                                <span class="add-icon">+</span>
-                                <span>担当者を追加</span>
-                            </button>
+                            <button onclick="showAddForm('member')" class="btn-success">+ 追加</button>
                         </div>
-                        
-                        <div class="add-form hidden" id="member-form">
-                            <div class="form-header">
-                                <h4>新しい担当者を追加</h4>
-                            </div>
-                            <div class="form-body">
-                                <select id="member-department" class="form-select">
-                                    <option value="">部署を選択してください</option>
-                                </select>
-                                <input type="text" id="member-name" class="form-input" placeholder="担当者名を入力">
-                                <div class="form-actions">
-                                    <button id="save-member" class="save-button">
-                                        <span class="save-icon">💾</span>
-                                        <span>保存</span>
-                                    </button>
-                                    <button id="cancel-member" class="cancel-button">
-                                        <span class="cancel-icon">✕</span>
-                                        <span>キャンセル</span>
-                                    </button>
-                                </div>
+                        <div id="member-form" class="add-form hidden">
+                            <select id="member-department-select">
+                                <option value="">部署を選択</option>
+                            </select>
+                            <input type="text" id="member-name" placeholder="担当者名を入力">
+                            <div class="form-actions">
+                                <button onclick="saveMember()" class="btn-primary">保存</button>
+                                <button onclick="hideAddForm('member')" class="btn-secondary">キャンセル</button>
                             </div>
                         </div>
-                        
-                        <div class="items-container">
-                            <div id="members-list" class="items-list">
-                                <!-- 動的に生成 -->
-                            </div>
-                        </div>
+                        <div id="members-list" class="items-list"></div>
                     </div>
 
-                    <!-- チャイム音管理 -->
-                    <div id="chimes-tab" class="tab-panel hidden">
-                        <div class="panel-header">
-                            <h3>🔔 チャイム音管理</h3>
-                            <button id="add-chime-btn" class="add-button">
-                                <span class="add-icon">+</span>
-                                <span>チャイム音を追加</span>
-                            </button>
+                    <!-- 設定 -->
+                    <div id="settings-tab" class="admin-tab">
+                        <div class="tab-header">
+                            <h3>📢 Teams設定</h3>
                         </div>
-                        
-                        <div class="add-form hidden" id="chime-form">
-                            <div class="form-header">
-                                <h4>新しいチャイム音を追加</h4>
-                            </div>
-                            <div class="form-body">
-                                <input type="text" id="chime-name" class="form-input" placeholder="チャイム音名を入力">
-                                <div class="file-upload-area">
-                                    <input type="file" id="chime-file" class="file-input" accept="audio/*">
-                                    <label for="chime-file" class="file-label">
-                                        <span class="file-icon">📁</span>
-                                        <span class="file-text">音声ファイルを選択</span>
-                                    </label>
-                                </div>
-                                <div class="form-actions">
-                                    <button id="save-chime" class="save-button">
-                                        <span class="save-icon">💾</span>
-                                        <span>保存</span>
-                                    </button>
-                                    <button id="cancel-chime" class="cancel-button">
-                                        <span class="cancel-icon">✕</span>
-                                        <span>キャンセル</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="items-container">
-                            <div id="chimes-list" class="items-list">
-                                <!-- 動的に生成 -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- チャネル管理 -->
-                    <div id="channels-tab" class="tab-panel hidden">
-                        <div class="panel-header">
-                            <h3>📢 Teamsチャネル管理</h3>
-                            <button id="add-channel-btn" class="add-button">
-                                <span class="add-icon">+</span>
-                                <span>チャネルを追加</span>
-                            </button>
-                        </div>
-                        
-                        <div class="add-form hidden" id="channel-form">
-                            <div class="form-header">
-                                <h4>新しいチャネルを追加</h4>
-                            </div>
-                            <div class="form-body">
-                                <input type="text" id="channel-name" class="form-input" placeholder="チャネル名を入力">
-                                <input type="url" id="channel-webhook" class="form-input" placeholder="Webhook URLを入力">
-                                <div class="form-actions">
-                                    <button id="save-channel" class="save-button">
-                                        <span class="save-icon">💾</span>
-                                        <span>保存</span>
-                                    </button>
-                                    <button id="cancel-channel" class="cancel-button">
-                                        <span class="cancel-icon">✕</span>
-                                        <span>キャンセル</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="items-container">
-                            <div id="channels-list" class="items-list">
-                                <!-- 動的に生成 -->
-                            </div>
+                        <div class="settings-form">
+                            <label>Webhook URL:</label>
+                            <input type="url" id="webhook-url" placeholder="https://your-teams-webhook-url">
+                            <button onclick="saveWebhook()" class="btn-primary">保存</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 確認ダイアログ -->
-        <div id="confirm-dialog" class="modal-overlay hidden">
-            <div class="modal-background"></div>
-            <div class="modal-dialog">
-                <div class="modal-header">
-                    <span class="modal-icon">❓</span>
-                    <h3 id="confirm-title">確認</h3>
-                </div>
-                <div class="modal-body">
-                    <p id="confirm-message">この操作を実行しますか？</p>
-                </div>
-                <div class="modal-actions">
-                    <button id="confirm-yes" class="confirm-button">
-                        <span class="confirm-icon">✓</span>
-                        <span>はい</span>
-                    </button>
-                    <button id="confirm-no" class="cancel-button">
-                        <span class="cancel-icon">✕</span>
-                        <span>いいえ</span>
-                    </button>
-                </div>
+        <!-- 通知結果 -->
+        <div id="notification-result" class="notification-result hidden">
+            <div class="result-content">
+                <div class="result-icon" id="result-icon">✓</div>
+                <div class="result-message" id="result-message">通知を送信しました</div>
+                <div class="result-detail" id="result-detail">チャイム音を再生してTeams通知を送信しました</div>
             </div>
+        </div>
+
+        <!-- 音声波形 -->
+        <div id="wave-animation" class="wave-animation hidden">
+            <div class="wave-container">
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+            </div>
+            <p>🎵 チャイム再生中...</p>
         </div>
     </div>
 

@@ -1,15 +1,14 @@
 {
   "name": "チャイム通知システム",
   "short_name": "チャイム通知",
-  "description": "Teams チャネル宛てチャイム通知PWA - 大きなボタンUI対応版",
+  "description": "Teams チャネル宛てチャイム通知PWA",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1976d2",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "scope": "./",
   "lang": "ja",
-  "categories": ["productivity", "utilities", "business"],
   "icons": [
     {
       "src": "./assets/icons/192x192.png",
@@ -22,45 +21,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "./assets/icons/192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "monochrome"
     }
-  ],
-  "shortcuts": [
-    {
-      "name": "通知送信",
-      "short_name": "通知",
-      "description": "チャイム通知を送信",
-      "url": "./index.html",
-      "icons": [
-        {
-          "src": "./assets/icons/192x192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "管理者設定",
-      "short_name": "設定",
-      "description": "マスタデータ管理",
-      "url": "./index.html#admin",
-      "icons": [
-        {
-          "src": "./assets/icons/192x192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    }
-  ],
-  "prefer_related_applications": false,
-  "related_applications": [],
-  "edge_side_panel": {
-    "preferred_width": 400
-  }
+  ]
 }

@@ -1,7 +1,7 @@
 /**
- * チャイム通知PWA - メインアプリケーション
- * iPad mini 2 (iOS 12.5.x) 対応
- * 完全なエラーハンドリング実装
+ * チャイム通知PWA - 大きなボタンUI版
+ * iPad mini 2 (iOS 12.5.x) 完全対応
+ * エラーハンドリング・検索・ページネーション機能搭載
  */
 
 'use strict';
@@ -19,9 +19,18 @@ const CONFIG = {
     MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
     SUPPORTED_AUDIO_TYPES: ['audio/mp3', 'audio/wav', 'audio/m4a', 'audio/aac'],
     ANIMATION_DURATION: 300,
-    WAVE_DURATION: 2000,
-    NOTIFICATION_DURATION: 3000,
-    ERROR_DURATION: 5000
+    WAVE_DURATION: 2500,
+    NOTIFICATION_DURATION: 4000,
+    ERROR_DURATION: 5000,
+    ITEMS_PER_PAGE: 8, // 2列 × 4行
+    SEARCH_DEBOUNCE: 300
+};
+
+const SCREENS = {
+    COMPANY: 'company',
+    DEPARTMENT: 'department',
+    MEMBER: 'member',
+    NOTIFICATION: 'notification'
 };
 
 const MESSAGES = {
@@ -35,7 +44,9 @@ const MESSAGES = {
         TEAMS_SEND_ERROR: 'Teams通知の送信に失敗しました',
         AUTH_FAILED: '認証に失敗しました',
         VALIDATION_ERROR: '入力内容を確認してください',
-        UNKNOWN_ERROR: '予期しないエラーが発生しました'
+        UNKNOWN_ERROR: '予期しないエラーが発生しました',
+        NO_DATA: 'データがありません',
+        USER_INTERACTION_REQUIRED: '音声再生にはユーザー操作が必要です'
     },
     SUCCESS: {
         NOTIFICATION_SENT: '通知を送信しました',
@@ -46,7 +57,8 @@ const MESSAGES = {
     },
     CONFIRM: {
         DELETE_ITEM: 'このデータを削除しますか？',
-        LOGOUT: 'ログアウトしますか？'
+        LOGOUT: 'ログアウトしますか？',
+        RESET_SELECTION: '選択をリセットして最初からやり直しますか？'
     }
 };
 
@@ -54,9 +66,6 @@ const MESSAGES = {
 // Utility Functions
 // ==========================================================================
 
-/**
- * エラーハンドリング付きのtry-catch wrapper
- */
 function safeExecute(fn, errorMessage = MESSAGES.ERRORS.UNKNOWN_ERROR) {
     try {
         return fn();
@@ -67,9 +76,6 @@ function safeExecute(fn, errorMessage = MESSAGES.ERRORS.UNKNOWN_ERROR) {
     }
 }
 
-/**
- * Promise版のsafeExecute
- */
 async function safeExecuteAsync(fn, errorMessage = MESSAGES.ERRORS.UNKNOWN_ERROR) {
     try {
         return await fn();
@@ -80,9 +86,6 @@ async function safeExecuteAsync(fn, errorMessage = MESSAGES.ERRORS.UNKNOWN_ERROR
     }
 }
 
-/**
- * DOM要素の安全な取得
- */
 function safeGetElement(selector) {
     const element = document.querySelector(selector);
     if (!element) {
@@ -91,9 +94,6 @@ function safeGetElement(selector) {
     return element;
 }
 
-/**
- * 値の検証
- */
 function validateInput(value, type = 'text', options = {}) {
     if (typeof value !== 'string') return false;
     
@@ -116,9 +116,6 @@ function validateInput(value, type = 'text', options = {}) {
     }
 }
 
-/**
- * ファイルサイズのフォーマット
- */
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -127,9 +124,6 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-/**
- * デバウンス関数
- */
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -140,6 +134,17 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function truncateText(text, maxLength = 50) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
 }
 
 // ==========================================================================
@@ -156,7 +161,6 @@ class ErrorHandler {
         messageEl.textContent = message;
         toast.classList.remove('hidden');
         
-        // 自動非表示
         setTimeout(() => {
             this.hide();
         }, duration);
@@ -200,7 +204,7 @@ window.addEventListener('unhandledrejection', (event) => {
     ErrorHandler.show(MESSAGES.ERRORS.UNKNOWN_ERROR);
 });
 
-// グローバル関数（HTML内から呼び出し用）
+// グローバル関数
 function hideError() {
     ErrorHandler.hide();
 }
@@ -250,7 +254,6 @@ class StorageManager {
         
         try {
             const parsed = JSON.parse(stored);
-            // マイグレーション処理
             return this.migrateData(parsed);
         } catch (error) {
             console.error('Data parse error:', error);
@@ -259,19 +262,16 @@ class StorageManager {
     }
     
     migrateData(data) {
-        // 必要に応じてデータ構造の移行を行う
         if (!data.version) {
             data.version = '1.0.0';
         }
         
-        // 必須フィールドの確認
         if (!Array.isArray(data.companies)) data.companies = [];
         if (!Array.isArray(data.departments)) data.departments = [];
         if (!Array.isArray(data.members)) data.members = [];
         if (!Array.isArray(data.chimes)) data.chimes = [];
         if (!Array.isArray(data.channels)) data.channels = [];
         
-        // デフォルトチャイムの確認
         if (!data.chimes.find(c => c.id === 'default-chime')) {
             data.chimes.unshift({
                 id: 'default-chime',
@@ -280,7 +280,6 @@ class StorageManager {
             });
         }
         
-        // 管理者パスワードの確認
         if (!data.adminPassword) {
             data.adminPassword = this.hashPassword(CONFIG.DEFAULT_ADMIN_PASSWORD);
         }
@@ -299,7 +298,6 @@ class StorageManager {
         }
     }
     
-    // CRUD Operations
     addItem(collection, item) {
         if (!this.data[collection] || !Array.isArray(this.data[collection])) {
             return null;
@@ -341,7 +339,6 @@ class StorageManager {
         const initialLength = this.data[collection].length;
         this.data[collection] = this.data[collection].filter(item => item.id !== id);
         
-        // 関連データの削除
         this.cleanupRelatedData(collection, id);
         
         return this.data[collection].length < initialLength && this.saveData();
@@ -376,11 +373,23 @@ class StorageManager {
         return items;
     }
     
+    searchItems(collection, query, searchFields = ['name']) {
+        const items = this.getItems(collection);
+        if (!query) return items;
+        
+        const normalizedQuery = query.toLowerCase().trim();
+        return items.filter(item => {
+            return searchFields.some(field => {
+                const value = item[field];
+                return value && value.toLowerCase().includes(normalizedQuery);
+            });
+        });
+    }
+    
     generateId() {
         return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
     
-    // Theme Management
     getTheme() {
         return localStorage.getItem(CONFIG.THEME_KEY) || 'light';
     }
@@ -395,14 +404,12 @@ class StorageManager {
         }
     }
     
-    // Password Management
     hashPassword(password) {
-        // 簡易ハッシュ化（実運用では適切なハッシュ化を実装）
         let hash = 0;
         for (let i = 0; i < password.length; i++) {
             const char = password.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // 32bit整数に変換
+            hash = hash & hash;
         }
         return hash.toString();
     }
@@ -433,7 +440,6 @@ class AudioManager {
         if (this.isInitialized) return true;
         
         try {
-            // iOS 12.5.x対応
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             if (!AudioContext) {
                 throw new Error('AudioContext not supported');
@@ -477,7 +483,7 @@ class AudioManager {
     
     async playChime(id) {
         if (!this.isUserInteracted) {
-            ErrorHandler.show('音声再生にはユーザー操作が必要です');
+            ErrorHandler.show(MESSAGES.ERRORS.USER_INTERACTION_REQUIRED);
             return false;
         }
         
@@ -501,7 +507,6 @@ class AudioManager {
             source.connect(gainNode);
             gainNode.connect(this.audioContext.destination);
             
-            // フェードイン効果
             gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
             gainNode.gain.linearRampToValueAtTime(0.7, this.audioContext.currentTime + 0.1);
             
@@ -524,7 +529,6 @@ class AudioManager {
             oscillator.connect(gainNode);
             gainNode.connect(this.audioContext.destination);
             
-            // チャイム音のパターン
             const frequencies = [880, 659, 523, 659, 880];
             const duration = 0.2;
             const currentTime = this.audioContext.currentTime;
@@ -534,7 +538,6 @@ class AudioManager {
                 oscillator.frequency.setValueAtTime(freq, startTime);
             });
             
-            // エンベロープ
             gainNode.gain.setValueAtTime(0, currentTime);
             gainNode.gain.linearRampToValueAtTime(0.3, currentTime + 0.05);
             gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + (frequencies.length * duration));
@@ -554,7 +557,7 @@ class AudioManager {
     }
     
     validateAudioFile(file) {
-        if (!file) return { valid: false, error: '選択されたファイルがありません' };
+        if (!file) return { valid: false, error: 'ファイルが選択されていません' };
         
         if (file.size > CONFIG.MAX_FILE_SIZE) {
             return { 
@@ -603,7 +606,7 @@ class NetworkManager {
         statusEl.className = `status-indicator ${this.isOnline ? 'online' : 'offline'}`;
         statusEl.innerHTML = `
             <span class="status-dot"></span>
-            ${this.isOnline ? 'オンライン' : 'オフライン'}
+            <span class="status-text">${this.isOnline ? 'オンライン' : 'オフライン'}</span>
         `;
     }
     
@@ -637,7 +640,7 @@ class NetworkManager {
         };
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒タイムアウト
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         
         try {
             const response = await fetch(webhookUrl, {
@@ -667,6 +670,195 @@ class NetworkManager {
 }
 
 // ==========================================================================
+// Screen Manager
+// ==========================================================================
+
+class ScreenManager {
+    constructor() {
+        this.currentScreen = SCREENS.COMPANY;
+        this.history = [];
+        this.selections = {
+            company: null,
+            department: null,
+            member: null,
+            chime: null
+        };
+        this.searchQueries = {
+            company: '',
+            department: '',
+            member: ''
+        };
+        this.pagination = {
+            company: { currentPage: 1 },
+            department: { currentPage: 1 },
+            member: { currentPage: 1 },
+            chime: { currentPage: 1 }
+        };
+    }
+
+    showScreen(screenName, addToHistory = true) {
+        if (addToHistory && this.currentScreen !== screenName) {
+            this.history.push(this.currentScreen);
+        }
+
+        document.querySelectorAll('.selection-screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+
+        const targetScreen = safeGetElement(`#${screenName}-screen`);
+        if (targetScreen) {
+            targetScreen.classList.add('active');
+            this.currentScreen = screenName;
+            this.updateHeader();
+            this.updateProgressBar();
+        }
+    }
+
+    goBack() {
+        if (this.history.length > 0) {
+            const previousScreen = this.history.pop();
+            this.showScreen(previousScreen, false);
+            
+            switch (this.currentScreen) {
+                case SCREENS.COMPANY:
+                    this.selections.company = null;
+                    this.selections.department = null;
+                    this.selections.member = null;
+                    this.selections.chime = null;
+                    break;
+                case SCREENS.DEPARTMENT:
+                    this.selections.department = null;
+                    this.selections.member = null;
+                    this.selections.chime = null;
+                    break;
+                case SCREENS.MEMBER:
+                    this.selections.member = null;
+                    this.selections.chime = null;
+                    break;
+                case SCREENS.NOTIFICATION:
+                    this.selections.chime = null;
+                    break;
+            }
+        }
+    }
+
+    updateHeader() {
+        const backBtn = safeGetElement('#back-btn');
+        const screenTitle = safeGetElement('#screen-title');
+        
+        if (backBtn) {
+            backBtn.classList.toggle('hidden', this.history.length === 0);
+        }
+
+        if (screenTitle) {
+            const titles = {
+                [SCREENS.COMPANY]: 'チャイム通知システム',
+                [SCREENS.DEPARTMENT]: '部署選択',
+                [SCREENS.MEMBER]: '担当者選択',
+                [SCREENS.NOTIFICATION]: '通知送信'
+            };
+            screenTitle.textContent = titles[this.currentScreen] || 'チャイム通知システム';
+        }
+    }
+
+    updateProgressBar() {
+        const steps = [SCREENS.COMPANY, SCREENS.DEPARTMENT, SCREENS.MEMBER, SCREENS.NOTIFICATION];
+        const currentIndex = steps.indexOf(this.currentScreen);
+        const progressPercent = ((currentIndex + 1) / steps.length) * 100;
+        
+        const progressFill = safeGetElement('#progress-fill');
+        if (progressFill) {
+            progressFill.style.width = `${progressPercent}%`;
+        }
+        
+        steps.forEach((step, index) => {
+            const stepEl = safeGetElement(`#step-${step}`);
+            if (stepEl) {
+                stepEl.classList.remove('active', 'completed');
+                
+                if (index < currentIndex) {
+                    stepEl.classList.add('completed');
+                } else if (index === currentIndex) {
+                    stepEl.classList.add('active');
+                }
+            }
+        });
+    }
+
+    resetSelections() {
+        this.selections = {
+            company: null,
+            department: null,
+            member: null,
+            chime: null
+        };
+        this.searchQueries = {
+            company: '',
+            department: '',
+            member: ''
+        };
+        this.pagination = {
+            company: { currentPage: 1 },
+            department: { currentPage: 1 },
+            member: { currentPage: 1 },
+            chime: { currentPage: 1 }
+        };
+        this.history = [];
+        this.showScreen(SCREENS.COMPANY, false);
+    }
+}
+
+// ==========================================================================
+// Pagination Manager
+// ==========================================================================
+
+class PaginationManager {
+    createPagination(containerId, items, currentPage, onPageChange) {
+        const container = safeGetElement(`#${containerId}`);
+        if (!container) return;
+
+        const totalPages = Math.ceil(items.length / CONFIG.ITEMS_PER_PAGE);
+        
+        if (totalPages <= 1) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        container.classList.remove('hidden');
+        container.innerHTML = `
+            <button class="page-btn prev-btn" ${currentPage <= 1 ? 'disabled' : ''}>
+                ‹
+            </button>
+            <span class="page-info">${currentPage} / ${totalPages}</span>
+            <button class="page-btn next-btn" ${currentPage >= totalPages ? 'disabled' : ''}>
+                ›
+            </button>
+        `;
+
+        const prevBtn = container.querySelector('.prev-btn');
+        const nextBtn = container.querySelector('.next-btn');
+
+        if (prevBtn && !prevBtn.disabled) {
+            prevBtn.addEventListener('click', () => {
+                onPageChange(currentPage - 1);
+            });
+        }
+
+        if (nextBtn && !nextBtn.disabled) {
+            nextBtn.addEventListener('click', () => {
+                onPageChange(currentPage + 1);
+            });
+        }
+    }
+
+    getPageItems(items, currentPage) {
+        const startIndex = (currentPage - 1) * CONFIG.ITEMS_PER_PAGE;
+        const endIndex = startIndex + CONFIG.ITEMS_PER_PAGE;
+        return items.slice(startIndex, endIndex);
+    }
+}
+
+// ==========================================================================
 // UI Manager
 // ==========================================================================
 
@@ -675,7 +867,6 @@ class UIManager {
         this.currentScreen = 'main';
         this.currentTab = 'companies';
         this.isAdminAuthenticated = false;
-        this.animations = new Map();
     }
     
     showScreen(screenName) {
@@ -709,11 +900,9 @@ class UIManager {
         messageEl.textContent = message;
         modal.classList.remove('hidden');
         
-        // イベントリスナーをクリア
         yesBtn.replaceWith(yesBtn.cloneNode(true));
         noBtn.replaceWith(noBtn.cloneNode(true));
         
-        // 新しいイベントリスナーを追加
         const newYesBtn = safeGetElement('#confirm-yes');
         const newNoBtn = safeGetElement('#confirm-no');
         
@@ -760,47 +949,40 @@ class UIManager {
         }, 600);
     }
     
-    animateElement(element, animationClass, duration = CONFIG.ANIMATION_DURATION) {
-        if (!element) return Promise.resolve();
-        
-        return new Promise((resolve) => {
-            element.classList.add(animationClass);
-            
-            const animationId = setTimeout(() => {
-                element.classList.remove(animationClass);
-                resolve();
-            }, duration);
-            
-            this.animations.set(element, animationId);
-        });
-    }
-    
-    showNotificationResult(success, isOnline, message = '') {
+    showNotificationResult(success, isOnline, message = '', detail = '') {
         const resultEl = safeGetElement('#notification-result');
         const iconEl = safeGetElement('#notification-result .result-icon');
         const messageEl = safeGetElement('#notification-result .result-message');
+        const detailEl = safeGetElement('#notification-result .result-detail');
         
         if (!resultEl || !iconEl || !messageEl) return;
         
-        let icon, className, text;
+        let icon, className, text, detailText;
         
         if (success && isOnline) {
             icon = '✓';
             className = 'success';
             text = message || MESSAGES.SUCCESS.NOTIFICATION_SENT;
+            detailText = detail || 'Teamsチャネルに送信完了';
         } else if (success && !isOnline) {
             icon = '⚠';
             className = 'warning';
             text = message || MESSAGES.SUCCESS.NOTIFICATION_OFFLINE;
+            detailText = detail || 'オフラインのため通知は送信されませんでした';
         } else {
             icon = '✗';
             className = 'error';
             text = message || MESSAGES.ERRORS.TEAMS_SEND_ERROR;
+            detailText = detail || 'もう一度お試しください';
         }
         
         iconEl.textContent = icon;
         iconEl.className = `result-icon ${className}`;
         messageEl.textContent = text;
+        
+        if (detailEl) {
+            detailEl.textContent = detailText;
+        }
         
         resultEl.classList.remove('hidden');
         
@@ -840,18 +1022,19 @@ class UIManager {
         const animate = () => {
             ctx.clearRect(0, 0, width, height);
             
-            // 波形の色を現在のテーマに合わせる
             const theme = document.getElementById('app').classList.contains('theme-dark') ? 'dark' : 'light';
-            const strokeColor = theme === 'dark' ? '#64b5f6' : '#1976d2';
+            const strokeColor = theme === 'dark' ? '#60a5fa' : '#1d4ed8';
             
             ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
+            ctx.shadowColor = strokeColor;
+            ctx.shadowBlur = 10;
             ctx.beginPath();
             
             for (let x = 0; x < width; x++) {
-                const amplitude = 30 * Math.exp(-time * 0.5);
+                const amplitude = 25 * Math.exp(-time * 0.4);
                 const frequency = 0.02;
-                const y = centerY + Math.sin((x * frequency) + time * 10) * amplitude;
+                const y = centerY + Math.sin((x * frequency) + time * 8) * amplitude;
                 
                 if (x === 0) {
                     ctx.moveTo(x, y);
@@ -863,7 +1046,7 @@ class UIManager {
             ctx.stroke();
             
             time += 0.05;
-            if (time < 2) {
+            if (time < 2.5) {
                 requestAnimationFrame(animate);
             }
         };
@@ -877,54 +1060,23 @@ class UIManager {
             app.className = `theme-${theme}`;
         }
         
-        // テーマアイコンの更新
         const themeIcons = document.querySelectorAll('.theme-icon');
         themeIcons.forEach(icon => {
-            // CSSで制御されるので、クラスの更新のみ
             icon.parentElement.setAttribute('title', 
                 theme === 'light' ? 'ダークテーマに切替' : 'ライトテーマに切替'
             );
         });
     }
     
-    populateSelect(selectId, items, valueKey = 'id', textKey = 'name', placeholder = '選択してください') {
-        const select = safeGetElement(selectId);
-        if (!select) return;
-        
-        select.innerHTML = `<option value="">${placeholder}</option>`;
-        
-        items.forEach(item => {
-            const option = document.createElement('option');
-            option.value = item[valueKey];
-            option.textContent = item[textKey];
-            select.appendChild(option);
-        });
-    }
-    
-    clearSelect(selectId, placeholder = '選択してください') {
-        const select = safeGetElement(selectId);
-        if (!select) return;
-        
-        select.innerHTML = `<option value="">${placeholder}</option>`;
-        select.disabled = true;
-    }
-    
-    setSelectDisabled(selectId, disabled) {
-        const select = safeGetElement(selectId);
-        if (select) {
-            select.disabled = disabled;
-        }
-    }
-    
     setButtonLoading(buttonId, loading) {
         const button = safeGetElement(buttonId);
         if (!button) return;
         
-        const text = button.querySelector('.button-text');
+        const content = button.querySelector('.button-content');
         const loader = button.querySelector('.button-loader');
         
-        if (text && loader) {
-            text.classList.toggle('hidden', loading);
+        if (content && loader) {
+            content.classList.toggle('hidden', loading);
             loader.classList.toggle('hidden', !loading);
         }
         
@@ -942,30 +1094,24 @@ class ChimeNotificationApp {
         this.audio = new AudioManager();
         this.network = new NetworkManager();
         this.ui = new UIManager();
+        this.screenManager = new ScreenManager();
+        this.paginationManager = new PaginationManager();
         
         this.editingItem = null;
         this.sessionTimeout = null;
+        this.searchDebounceTimers = {};
         
         this.init();
     }
-    
+
     async init() {
         try {
             this.ui.showLoading(true);
             
-            // テーマの適用
             this.applyTheme();
-            
-            // イベントリスナーの設定
             this.setupEventListeners();
-            
-            // データの読み込み
-            this.loadInitialData();
-            
-            // オンライン状態の更新
+            this.loadCurrentScreenData();
             this.network.updateOnlineStatus();
-            
-            // 管理者セッションの確認
             this.checkAdminSession();
             
             this.ui.showLoading(false);
@@ -978,79 +1124,85 @@ class ChimeNotificationApp {
     }
     
     setupEventListeners() {
-        // ユーザー操作の検知（音声再生用）
+        // ユーザー操作検知
         document.addEventListener('click', () => {
             this.audio.setUserInteracted();
         }, { once: true });
-        
+
         // テーマ切替
         const themeToggle = safeGetElement('#theme-toggle');
         if (themeToggle) {
             themeToggle.addEventListener('click', () => this.toggleTheme());
         }
-        
+
         const adminThemeToggle = safeGetElement('#admin-theme-toggle');
         if (adminThemeToggle) {
             adminThemeToggle.addEventListener('click', () => this.toggleTheme());
         }
-        
+
         // 画面切替
         const adminToggle = safeGetElement('#admin-toggle');
         if (adminToggle) {
             adminToggle.addEventListener('click', () => this.showAdminScreen());
         }
-        
+
         const backToMain = safeGetElement('#back-to-main');
         if (backToMain) {
             backToMain.addEventListener('click', () => this.showMainScreen());
         }
-        
-        // フォーム要素
-        this.setupFormEventListeners();
-        
-        // 管理者機能
-        this.setupAdminEventListeners();
-        
-        // リップルエフェクト
-        this.setupRippleEffects();
-    }
-    
-    setupFormEventListeners() {
-        // 会社選択
-        const companySelect = safeGetElement('#company-select');
-        if (companySelect) {
-            companySelect.addEventListener('change', (e) => {
-                this.onCompanyChange(e.target.value);
+
+        // 戻るボタン
+        const backBtn = safeGetElement('#back-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.screenManager.goBack();
+                this.loadCurrentScreenData();
             });
         }
-        
-        // 部署選択
-        const departmentSelect = safeGetElement('#department-select');
-        if (departmentSelect) {
-            departmentSelect.addEventListener('change', (e) => {
-                this.onDepartmentChange(e.target.value);
-            });
-        }
-        
-        // 担当者・チャイム音選択
-        ['#member-select', '#chime-select'].forEach(selector => {
-            const element = safeGetElement(selector);
-            if (element) {
-                element.addEventListener('change', () => {
-                    this.validateNotificationForm();
-                });
-            }
-        });
-        
-        // 通知ボタン
+
+        // 通知・リセットボタン
         const notifyBtn = safeGetElement('#notify-btn');
         if (notifyBtn) {
             notifyBtn.addEventListener('click', (e) => {
                 this.handleNotification(e);
             });
         }
+
+        const resetBtn = safeGetElement('#reset-btn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.ui.showModal('確認', MESSAGES.CONFIRM.RESET_SELECTION, () => {
+                    this.screenManager.resetSelections();
+                    this.loadCurrentScreenData();
+                });
+            });
+        }
+
+        // 検索機能
+        this.setupSearchEventListeners();
+
+        // 管理者機能
+        this.setupAdminEventListeners();
+
+        // リップルエフェクト
+        this.setupRippleEffects();
     }
-    
+
+    setupSearchEventListeners() {
+        const searchInputs = ['company', 'department', 'member'];
+        
+        searchInputs.forEach(type => {
+            const searchInput = safeGetElement(`#${type}-search`);
+            if (searchInput) {
+                searchInput.addEventListener('input', debounce((e) => {
+                    this.screenManager.searchQueries[type] = e.target.value;
+                    this.screenManager.pagination[type].currentPage = 1;
+                    this.loadCurrentScreenData();
+                }, CONFIG.SEARCH_DEBOUNCE));
+            }
+        });
+    }
+
     setupAdminEventListeners() {
         // 認証
         const authBtn = safeGetElement('#auth-btn');
@@ -1081,11 +1233,10 @@ class ChimeNotificationApp {
         // タブ切替
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
-                this.switchAdminTab(e.target.dataset.tab);
+                this.switchAdminTab(e.target.closest('.nav-tab').dataset.tab);
             });
         });
         
-        // データ管理ボタン
         this.setupDataManagementEventListeners();
     }
     
@@ -1093,7 +1244,6 @@ class ChimeNotificationApp {
         const collections = ['company', 'department', 'member', 'chime', 'channel'];
         
         collections.forEach(collection => {
-            // 追加ボタン
             const addBtn = safeGetElement(`#add-${collection}-btn`);
             if (addBtn) {
                 addBtn.addEventListener('click', () => {
@@ -1101,7 +1251,6 @@ class ChimeNotificationApp {
                 });
             }
             
-            // 保存ボタン
             const saveBtn = safeGetElement(`#save-${collection}`);
             if (saveBtn) {
                 saveBtn.addEventListener('click', () => {
@@ -1109,7 +1258,6 @@ class ChimeNotificationApp {
                 });
             }
             
-            // キャンセルボタン
             const cancelBtn = safeGetElement(`#cancel-${collection}`);
             if (cancelBtn) {
                 cancelBtn.addEventListener('click', () => {
@@ -1145,6 +1293,8 @@ class ChimeNotificationApp {
     // 画面遷移
     showMainScreen() {
         this.ui.showScreen('main');
+        this.screenManager.resetSelections();
+        this.loadCurrentScreenData();
     }
     
     showAdminScreen() {
@@ -1155,737 +1305,3 @@ class ChimeNotificationApp {
             this.showAdminContent();
         }
     }
-    
-    showAuthScreen() {
-        const authScreen = safeGetElement('#auth-screen');
-        const adminContent = safeGetElement('#admin-content');
-        
-        if (authScreen && adminContent) {
-            authScreen.classList.remove('hidden');
-            adminContent.classList.add('hidden');
-        }
-    }
-    
-    showAdminContent() {
-        const authScreen = safeGetElement('#auth-screen');
-        const adminContent = safeGetElement('#admin-content');
-        
-        if (authScreen && adminContent) {
-            authScreen.classList.add('hidden');
-            adminContent.classList.remove('hidden');
-        }
-        
-        this.loadAdminData();
-        this.startSessionTimeout();
-    }
-    
-    // データ読み込み
-    loadInitialData() {
-        this.loadCompanies();
-        this.loadChimes();
-    }
-    
-    loadCompanies() {
-        const companies = this.storage.getItems('companies');
-        this.ui.populateSelect('#company-select', companies);
-    }
-    
-    loadChimes() {
-        const chimes = this.storage.getItems('chimes');
-        this.ui.populateSelect('#chime-select', chimes);
-        
-        // 音声ファイルをプリロード
-        this.preloadAudioFiles(chimes);
-    }
-    
-    async preloadAudioFiles(chimes) {
-        for (const chime of chimes) {
-            if (chime.file && chime.id !== 'default-chime') {
-                try {
-                    const arrayBuffer = this.base64ToArrayBuffer(chime.file);
-                    await this.audio.loadAudioFile(chime.id, arrayBuffer);
-                } catch (error) {
-                    console.warn(`Failed to preload audio: ${chime.name}`, error);
-                }
-            }
-        }
-    }
-    
-    // フォーム処理
-    onCompanyChange(companyId) {
-        this.ui.clearSelect('#department-select');
-        this.ui.clearSelect('#member-select');
-        
-        if (companyId) {
-            const departments = this.storage.getItems('departments', 
-                d => d.companyId === companyId
-            );
-            this.ui.populateSelect('#department-select', departments);
-            this.ui.setSelectDisabled('#department-select', false);
-        }
-        
-        this.validateNotificationForm();
-    }
-    
-    onDepartmentChange(departmentId) {
-        this.ui.clearSelect('#member-select');
-        
-        if (departmentId) {
-            const members = this.storage.getItems('members', 
-                m => m.departmentId === departmentId
-            );
-            this.ui.populateSelect('#member-select', members);
-            this.ui.setSelectDisabled('#member-select', false);
-        }
-        
-        this.validateNotificationForm();
-    }
-    
-    validateNotificationForm() {
-        const company = safeGetElement('#company-select')?.value;
-        const department = safeGetElement('#department-select')?.value;
-        const member = safeGetElement('#member-select')?.value;
-        const chime = safeGetElement('#chime-select')?.value;
-        
-        const isValid = company && department && member && chime;
-        
-        const notifyBtn = safeGetElement('#notify-btn');
-        if (notifyBtn) {
-            notifyBtn.disabled = !isValid;
-        }
-    }
-    
-    // 通知処理
-    async handleNotification(event) {
-        try {
-            this.ui.setButtonLoading('#notify-btn', true);
-            
-            // チャイム音再生
-            const chimeId = safeGetElement('#chime-select')?.value;
-            if (chimeId) {
-                const playSuccess = await this.audio.playChime(chimeId);
-                if (playSuccess) {
-                    this.ui.showWaveAnimation();
-                }
-            }
-            
-            // Teams通知送信（オンライン時のみ）
-            let sendSuccess = true;
-            if (this.network.isOnline) {
-                sendSuccess = await this.sendTeamsNotification();
-            }
-            
-            this.ui.showNotificationResult(true, this.network.isOnline && sendSuccess);
-            
-        } catch (error) {
-            console.error('Notification error:', error);
-            this.ui.showNotificationResult(false, this.network.isOnline, error.message);
-        } finally {
-            setTimeout(() => {
-                this.ui.setButtonLoading('#notify-btn', false);
-            }, 1000);
-        }
-    }
-    
-    async sendTeamsNotification() {
-        const channels = this.storage.getItems('channels');
-        if (channels.length === 0) {
-            throw new Error('送信先チャネルが設定されていません');
-        }
-        
-        const message = this.buildNotificationMessage();
-        const promises = channels.map(channel => 
-            this.network.sendToTeams(channel.webhook, message)
-        );
-        
-        try {
-            await Promise.all(promises);
-            return true;
-        } catch (error) {
-            ErrorHandler.handleNetworkError(error);
-            return false;
-        }
-    }
-    
-    buildNotificationMessage() {
-        const companyId = safeGetElement('#company-select')?.value;
-        const departmentId = safeGetElement('#department-select')?.value;
-        const memberId = safeGetElement('#member-select')?.value;
-        
-        const company = this.storage.getItems('companies').find(c => c.id === companyId);
-        const department = this.storage.getItems('departments').find(d => d.id === departmentId);
-        const member = this.storage.getItems('members').find(m => m.id === memberId);
-        
-        return `**【チャイム通知】**\n` +
-               `🏢 **会社**: ${company?.name || '不明'}\n` +
-               `🏬 **部署**: ${department?.name || '不明'}\n` +
-               `👤 **担当者**: ${member?.name || '不明'}\n` +
-               `📅 **送信時刻**: ${new Date().toLocaleString('ja-JP')}`;
-    }
-    
-    // 管理者認証
-    handleAdminLogin() {
-        const passwordInput = safeGetElement('#admin-password');
-        const password = passwordInput?.value?.trim();
-        
-        if (!password) {
-            ErrorHandler.show('パスワードを入力してください');
-            return;
-        }
-        
-        if (this.storage.verifyPassword(password)) {
-            this.ui.isAdminAuthenticated = true;
-            this.saveAdminSession();
-            this.showAdminContent();
-            passwordInput.value = '';
-            
-            // 成功メッセージを表示
-            setTimeout(() => {
-                this.ui.showNotificationResult(true, true, MESSAGES.SUCCESS.LOGIN_SUCCESS);
-            }, 300);
-        } else {
-            ErrorHandler.show(MESSAGES.ERRORS.AUTH_FAILED);
-            passwordInput.value = '';
-            passwordInput.focus();
-        }
-    }
-    
-    handleAdminLogout() {
-        this.ui.isAdminAuthenticated = false;
-        this.clearAdminSession();
-        this.showAuthScreen();
-        this.clearSessionTimeout();
-    }
-    
-    saveAdminSession() {
-        try {
-            const session = {
-                timestamp: Date.now(),
-                expires: Date.now() + CONFIG.SESSION_TIMEOUT
-            };
-            localStorage.setItem(CONFIG.ADMIN_SESSION_KEY, JSON.stringify(session));
-        } catch (error) {
-            console.warn('Failed to save admin session:', error);
-        }
-    }
-    
-    checkAdminSession() {
-        try {
-            const stored = localStorage.getItem(CONFIG.ADMIN_SESSION_KEY);
-            if (!stored) return;
-            
-            const session = JSON.parse(stored);
-            if (Date.now() < session.expires) {
-                this.ui.isAdminAuthenticated = true;
-            } else {
-                this.clearAdminSession();
-            }
-        } catch (error) {
-            console.warn('Failed to check admin session:', error);
-            this.clearAdminSession();
-        }
-    }
-    
-    clearAdminSession() {
-        try {
-            localStorage.removeItem(CONFIG.ADMIN_SESSION_KEY);
-        } catch (error) {
-            console.warn('Failed to clear admin session:', error);
-        }
-    }
-    
-    startSessionTimeout() {
-        this.clearSessionTimeout();
-        this.sessionTimeout = setTimeout(() => {
-            this.handleAdminLogout();
-            ErrorHandler.show('セッションがタイムアウトしました');
-        }, CONFIG.SESSION_TIMEOUT);
-    }
-    
-    clearSessionTimeout() {
-        if (this.sessionTimeout) {
-            clearTimeout(this.sessionTimeout);
-            this.sessionTimeout = null;
-        }
-    }
-    
-    // 管理者画面
-    switchAdminTab(tabName) {
-        // タブボタンの更新
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.tab === tabName);
-        });
-        
-        // タブパネルの更新
-        document.querySelectorAll('.tab-panel').forEach(panel => {
-            panel.classList.toggle('active', panel.id === `${tabName}-tab`);
-        });
-        
-        this.ui.currentTab = tabName;
-        this.loadTabData(tabName);
-    }
-    
-    loadAdminData() {
-        this.loadTabData(this.ui.currentTab);
-        this.populateSelectsForForms();
-    }
-    
-    loadTabData(tabName) {
-        switch (tabName) {
-            case 'companies':
-                this.renderCompaniesList();
-                break;
-            case 'departments':
-                this.renderDepartmentsList();
-                break;
-            case 'members':
-                this.renderMembersList();
-                break;
-            case 'chimes':
-                this.renderChimesList();
-                break;
-            case 'channels':
-                this.renderChannelsList();
-                break;
-        }
-    }
-    
-    populateSelectsForForms() {
-        // 部署フォーム用の会社選択
-        const companies = this.storage.getItems('companies');
-        this.ui.populateSelect('#department-company', companies);
-        
-        // 担当者フォーム用の部署選択
-        const departments = this.storage.getItems('departments');
-        this.ui.populateSelect('#member-department', departments.map(d => {
-            const company = companies.find(c => c.id === d.companyId);
-            return {
-                ...d,
-                name: `${company?.name || '不明'} - ${d.name}`
-            };
-        }));
-    }
-    
-    // データレンダリング
-    renderCompaniesList() {
-        const companies = this.storage.getItems('companies');
-        const listEl = safeGetElement('#companies-list');
-        if (!listEl) return;
-        
-        listEl.innerHTML = companies.map(company => `
-            <div class="item-card">
-                <div class="item-info">
-                    <div class="item-name">${this.escapeHtml(company.name)}</div>
-                    <div class="item-detail">ID: ${company.id}</div>
-                </div>
-                <div class="item-actions">
-                    <button class="delete-button" onclick="app.deleteItem('companies', '${company.id}')">
-                        削除
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    renderDepartmentsList() {
-        const departments = this.storage.getItems('departments');
-        const companies = this.storage.getItems('companies');
-        const listEl = safeGetElement('#departments-list');
-        if (!listEl) return;
-        
-        listEl.innerHTML = departments.map(dept => {
-            const company = companies.find(c => c.id === dept.companyId);
-            return `
-                <div class="item-card">
-                    <div class="item-info">
-                        <div class="item-name">${this.escapeHtml(dept.name)}</div>
-                        <div class="item-detail">会社: ${this.escapeHtml(company?.name || '不明')}</div>
-                    </div>
-                    <div class="item-actions">
-                        <button class="delete-button" onclick="app.deleteItem('departments', '${dept.id}')">
-                            削除
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-    
-    renderMembersList() {
-        const members = this.storage.getItems('members');
-        const departments = this.storage.getItems('departments');
-        const companies = this.storage.getItems('companies');
-        const listEl = safeGetElement('#members-list');
-        if (!listEl) return;
-        
-        listEl.innerHTML = members.map(member => {
-            const dept = departments.find(d => d.id === member.departmentId);
-            const company = companies.find(c => c.id === dept?.companyId);
-            return `
-                <div class="item-card">
-                    <div class="item-info">
-                        <div class="item-name">${this.escapeHtml(member.name)}</div>
-                        <div class="item-detail">
-                            ${this.escapeHtml(company?.name || '不明')} - ${this.escapeHtml(dept?.name || '不明')}
-                        </div>
-                    </div>
-                    <div class="item-actions">
-                        <button class="delete-button" onclick="app.deleteItem('members', '${member.id}')">
-                            削除
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-    
-    renderChimesList() {
-        const chimes = this.storage.getItems('chimes');
-        const listEl = safeGetElement('#chimes-list');
-        if (!listEl) return;
-        
-        listEl.innerHTML = chimes.map(chime => `
-            <div class="item-card">
-                <div class="item-info">
-                    <div class="item-name">${this.escapeHtml(chime.name)}</div>
-                    <div class="item-detail">
-                        ${chime.id === 'default-chime' ? '内蔵チャイム' : 'アップロード済み'}
-                    </div>
-                </div>
-                <div class="item-actions">
-                    <button class="play-button" onclick="app.playChime('${chime.id}')">
-                        再生
-                    </button>
-                    ${chime.id !== 'default-chime' ? `
-                        <button class="delete-button" onclick="app.deleteItem('chimes', '${chime.id}')">
-                            削除
-                        </button>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    renderChannelsList() {
-        const channels = this.storage.getItems('channels');
-        const listEl = safeGetElement('#channels-list');
-        if (!listEl) return;
-        
-        listEl.innerHTML = channels.map(channel => `
-            <div class="item-card">
-                <div class="item-info">
-                    <div class="item-name">${this.escapeHtml(channel.name)}</div>
-                    <div class="item-detail">${this.escapeHtml(this.truncateUrl(channel.webhook))}</div>
-                </div>
-                <div class="item-actions">
-                    <button class="delete-button" onclick="app.deleteItem('channels', '${channel.id}')">
-                        削除
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    // フォーム管理
-    showAddForm(collection) {
-        const form = safeGetElement(`#${collection}-form`);
-        if (form) {
-            form.classList.remove('hidden');
-            this.ui.animateElement(form, 'fade-in');
-        }
-    }
-    
-    hideAddForm(collection) {
-        const form = safeGetElement(`#${collection}-form`);
-        if (form) {
-            form.classList.add('hidden');
-            this.clearForm(collection);
-        }
-    }
-    
-    clearForm(collection) {
-        const inputs = document.querySelectorAll(`#${collection}-form input, #${collection}-form select`);
-        inputs.forEach(input => {
-            if (input.type === 'file') {
-                input.value = '';
-            } else {
-                input.value = '';
-            }
-        });
-    }
-    
-    // データ保存
-    async saveItem(collection) {
-        try {
-            let data;
-            
-            switch (collection) {
-                case 'company':
-                    data = await this.saveCompany();
-                    break;
-                case 'department':
-                    data = await this.saveDepartment();
-                    break;
-                case 'member':
-                    data = await this.saveMember();
-                    break;
-                case 'chime':
-                    data = await this.saveChime();
-                    break;
-                case 'channel':
-                    data = await this.saveChannel();
-                    break;
-                default:
-                    throw new Error('Unknown collection');
-            }
-            
-            if (data) {
-                const plural = collection === 'company' ? 'companies' : `${collection}s`;
-                const id = this.storage.addItem(plural, data);
-                
-                if (id) {
-                    this.hideAddForm(collection);
-                    this.loadTabData(plural);
-                    this.loadInitialData(); // メインフォームを更新
-                    this.populateSelectsForForms(); // 管理フォームを更新
-                    this.ui.showNotificationResult(true, true, MESSAGES.SUCCESS.DATA_SAVED);
-                } else {
-                    throw new Error('Failed to save data');
-                }
-            }
-        } catch (error) {
-            console.error('Save error:', error);
-            ErrorHandler.show(error.message || MESSAGES.ERRORS.VALIDATION_ERROR);
-        }
-    }
-    
-    async saveCompany() {
-        const nameInput = safeGetElement('#company-name');
-        const name = nameInput?.value?.trim();
-        
-        if (!validateInput(name, 'text', { minLength: 1, maxLength: 50 })) {
-            throw new Error('会社名を正しく入力してください（1-50文字）');
-        }
-        
-        return { name };
-    }
-    
-    async saveDepartment() {
-        const companySelect = safeGetElement('#department-company');
-        const nameInput = safeGetElement('#department-name');
-        
-        const companyId = companySelect?.value;
-        const name = nameInput?.value?.trim();
-        
-        if (!companyId) {
-            throw new Error('会社を選択してください');
-        }
-        
-        if (!validateInput(name, 'text', { minLength: 1, maxLength: 50 })) {
-            throw new Error('部署名を正しく入力してください（1-50文字）');
-        }
-        
-        return { companyId, name };
-    }
-    
-    async saveMember() {
-        const departmentSelect = safeGetElement('#member-department');
-        const nameInput = safeGetElement('#member-name');
-        
-        const departmentId = departmentSelect?.value;
-        const name = nameInput?.value?.trim();
-        
-        if (!departmentId) {
-            throw new Error('部署を選択してください');
-        }
-        
-        if (!validateInput(name, 'text', { minLength: 1, maxLength: 50 })) {
-            throw new Error('担当者名を正しく入力してください（1-50文字）');
-        }
-        
-        return { departmentId, name };
-    }
-    
-    async saveChime() {
-        const nameInput = safeGetElement('#chime-name');
-        const fileInput = safeGetElement('#chime-file');
-        
-        const name = nameInput?.value?.trim();
-        const file = fileInput?.files?.[0];
-        
-        if (!validateInput(name, 'text', { minLength: 1, maxLength: 50 })) {
-            throw new Error('チャイム音名を正しく入力してください（1-50文字）');
-        }
-        
-        if (!file) {
-            throw new Error('音声ファイルを選択してください');
-        }
-        
-        const validation = this.audio.validateAudioFile(file);
-        if (!validation.valid) {
-            throw new Error(validation.error);
-        }
-        
-        const fileData = await this.fileToBase64(file);
-        
-        // 音声ファイルの読み込みテスト
-        const arrayBuffer = this.base64ToArrayBuffer(fileData);
-        const testId = 'test_' + Date.now();
-        const loadSuccess = await this.audio.loadAudioFile(testId, arrayBuffer);
-        
-        if (!loadSuccess) {
-            throw new Error('音声ファイルの形式が正しくありません');
-        }
-        
-        return { name, file: fileData };
-    }
-    
-    async saveChannel() {
-        const nameInput = safeGetElement('#channel-name');
-        const webhookInput = safeGetElement('#channel-webhook');
-        
-        const name = nameInput?.value?.trim();
-        const webhook = webhookInput?.value?.trim();
-        
-        if (!validateInput(name, 'text', { minLength: 1, maxLength: 50 })) {
-            throw new Error('チャネル名を正しく入力してください（1-50文字）');
-        }
-        
-        if (!validateInput(webhook, 'url')) {
-            throw new Error('正しいWebhook URLを入力してください');
-        }
-        
-        if (!webhook.includes('outlook.office.com') && !webhook.includes('outlook.office365.com')) {
-            throw new Error('Microsoft Teams Webhook URLを入力してください');
-        }
-        
-        return { name, webhook };
-    }
-    
-    // データ削除
-    deleteItem(collection, id) {
-        this.ui.showModal('確認', MESSAGES.CONFIRM.DELETE_ITEM, () => {
-            const success = this.storage.deleteItem(collection, id);
-            if (success) {
-                this.loadTabData(this.ui.currentTab);
-                this.loadInitialData(); // メインフォームを更新
-                this.populateSelectsForForms(); // 管理フォームを更新
-                this.ui.showNotificationResult(true, true, MESSAGES.SUCCESS.DATA_DELETED);
-            } else {
-                ErrorHandler.show('削除に失敗しました');
-            }
-        });
-    }
-    
-    // チャイム再生（管理画面から）
-    async playChime(id) {
-        try {
-            const success = await this.audio.playChime(id);
-            if (!success) {
-                ErrorHandler.show(MESSAGES.ERRORS.AUDIO_ERROR);
-            }
-        } catch (error) {
-            console.error('Play chime error:', error);
-            ErrorHandler.show(MESSAGES.ERRORS.AUDIO_ERROR);
-        }
-    }
-    
-    // ユーティリティメソッド
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    truncateUrl(url, maxLength = 50) {
-        if (url.length <= maxLength) return url;
-        return url.substring(0, maxLength - 3) + '...';
-    }
-    
-    async fileToBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const result = reader.result;
-                if (typeof result === 'string') {
-                    resolve(result.split(',')[1]); // data:... プレフィックスを除去
-                } else {
-                    reject(new Error('Failed to read file'));
-                }
-            };
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-        });
-    }
-    
-    base64ToArrayBuffer(base64) {
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-    }
-}
-
-// ==========================================================================
-// PWA Service Worker Registration
-// ==========================================================================
-
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', async () => {
-        try {
-            const registration = await navigator.serviceWorker.register('./sw.js');
-            console.log('Service Worker registered:', registration);
-            
-            // 更新チェック
-            registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                if (newWorker) {
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // 新しいバージョンが利用可能
-                            if (confirm('新しいバージョンが利用可能です。更新しますか？')) {
-                                window.location.reload();
-                            }
-                        }
-                    });
-                }
-            });
-        } catch (error) {
-            console.error('Service Worker registration failed:', error);
-        }
-    });
-}
-
-// ==========================================================================
-// Application Initialization
-// ==========================================================================
-
-let app;
-
-document.addEventListener('DOMContentLoaded', () => {
-    app = new ChimeNotificationApp();
-});
-
-// iOS 12.5.x 対応: ページ非表示時の処理
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        // バックグラウンド時の処理
-        if (app?.audio?.audioContext?.state === 'running') {
-            app.audio.audioContext.suspend();
-        }
-    } else {
-        // フォアグラウンド復帰時の処理
-        if (app?.audio?.audioContext?.state === 'suspended') {
-            app.audio.audioContext.resume();
-        }
-    }
-});
-
-// ページアンロード時のクリーンアップ
-window.addEventListener('beforeunload', () => {
-    if (app) {
-        app.clearSessionTimeout();
-    }
-});

@@ -30,22 +30,6 @@
       "purpose": "monochrome"
     }
   ],
-  "screenshots": [
-    {
-      "src": "./assets/screenshots/desktop.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "デスクトップ画面"
-    },
-    {
-      "src": "./assets/screenshots/mobile.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "モバイル画面"
-    }
-  ],
   "shortcuts": [
     {
       "name": "通知送信",
@@ -76,7 +60,6 @@
   ],
   "prefer_related_applications": false,
   "related_applications": [],
-  "iarc_rating_id": "",
   "edge_side_panel": {
     "preferred_width": 400
   }

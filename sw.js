@@ -30,15 +30,12 @@ const CACHE_STRATEGIES = {
 
 // リソースタイプ別キャッシュ戦略
 const RESOURCE_STRATEGIES = {
-    // 静的リソース：キャッシュファースト
     '\\.html$': CACHE_STRATEGIES.CACHE_FIRST,
     '\\.css$': CACHE_STRATEGIES.CACHE_FIRST,
     '\\.js$': CACHE_STRATEGIES.CACHE_FIRST,
     '\\.json$': CACHE_STRATEGIES.CACHE_FIRST,
     '\\.(png|jpg|jpeg|gif|svg|ico)$': CACHE_STRATEGIES.CACHE_FIRST,
     '\\.(woff|woff2|ttf|eot)$': CACHE_STRATEGIES.CACHE_FIRST,
-    
-    // 音声ファイル：ネットワークファースト
     '\\.(mp3|wav|m4a|aac)$': CACHE_STRATEGIES.NETWORK_FIRST
 };
 
@@ -62,9 +59,6 @@ const EXCLUDED_URLS = [
 // Utility Functions
 // ==========================================================================
 
-/**
- * エラーハンドリング付きのキャッシュ操作
- */
 async function safeCache(cacheName, request, response) {
     try {
         const cache = await caches.open(cacheName);
@@ -76,26 +70,20 @@ async function safeCache(cacheName, request, response) {
     }
 }
 
-/**
- * リソースがキャッシュ可能かチェック
- */
 function isCacheable(url) {
     try {
         const urlObj = new URL(url);
         
-        // 除外URLのチェック
         if (EXCLUDED_URLS.some(pattern => pattern.test(url))) {
             return false;
         }
         
-        // 同一オリジンチェック
         if (urlObj.origin !== self.location.origin) {
             return false;
         }
         
         const pathname = urlObj.pathname.toLowerCase();
         
-        // 拡張子チェック
         const hasValidExtension = CACHEABLE_EXTENSIONS.some(ext => 
             pathname.endsWith(ext)
         ) || pathname === '/' || pathname.endsWith('/');
@@ -107,21 +95,15 @@ function isCacheable(url) {
     }
 }
 
-/**
- * キャッシュ戦略の決定
- */
 function getCacheStrategy(url) {
     for (const [pattern, strategy] of Object.entries(RESOURCE_STRATEGIES)) {
         if (new RegExp(pattern, 'i').test(url)) {
             return strategy;
         }
     }
-    return CACHE_STRATEGIES.CACHE_FIRST; // デフォルト
+    return CACHE_STRATEGIES.CACHE_FIRST;
 }
 
-/**
- * ネットワークタイムアウト付きフェッチ
- */
 async function fetchWithTimeout(request, timeout = 5000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -138,14 +120,10 @@ async function fetchWithTimeout(request, timeout = 5000) {
     }
 }
 
-/**
- * キャッシュファースト戦略
- */
 async function cacheFirst(request) {
     try {
         const cachedResponse = await caches.match(request);
         if (cachedResponse) {
-            // バックグラウンドでキャッシュを更新
             updateCacheInBackground(request);
             return cachedResponse;
         }
@@ -164,9 +142,6 @@ async function cacheFirst(request) {
     }
 }
 
-/**
- * ネットワークファースト戦略
- */
 async function networkFirst(request) {
     try {
         const networkResponse = await fetchWithTimeout(request);
@@ -183,9 +158,6 @@ async function networkFirst(request) {
     }
 }
 
-/**
- * Stale While Revalidate戦略
- */
 async function staleWhileRevalidate(request) {
     const cachedResponse = await caches.match(request);
     
@@ -201,9 +173,6 @@ async function staleWhileRevalidate(request) {
     return cachedResponse || networkPromise;
 }
 
-/**
- * バックグラウンドキャッシュ更新
- */
 async function updateCacheInBackground(request) {
     try {
         const response = await fetch(request);
@@ -220,20 +189,15 @@ async function updateCacheInBackground(request) {
 // Service Worker Events
 // ==========================================================================
 
-/**
- * Service Worker インストール
- */
 self.addEventListener('install', (event) => {
     console.log('Service Worker installing...');
     
     event.waitUntil(
         (async () => {
             try {
-                // 重要なリソースを先にキャッシュ
                 const cache = await caches.open(CACHE_NAME);
                 console.log('Caching essential resources...');
                 
-                // 並列でキャッシュ
                 await Promise.allSettled(
                     CACHE_URLS.map(async url => {
                         try {
@@ -246,8 +210,6 @@ self.addEventListener('install', (event) => {
                 );
                 
                 console.log('Service Worker installed successfully');
-                
-                // 即座にアクティベート
                 self.skipWaiting();
             } catch (error) {
                 console.error('Service Worker install failed:', error);
@@ -257,16 +219,12 @@ self.addEventListener('install', (event) => {
     );
 });
 
-/**
- * Service Worker アクティベート
- */
 self.addEventListener('activate', (event) => {
     console.log('Service Worker activating...');
     
     event.waitUntil(
         (async () => {
             try {
-                // 古いキャッシュの削除
                 const cacheNames = await caches.keys();
                 const deletePromises = cacheNames
                     .filter(cacheName => 
@@ -279,13 +237,10 @@ self.addEventListener('activate', (event) => {
                     });
                 
                 await Promise.all(deletePromises);
-                
-                // すべてのクライアントを制御
                 await self.clients.claim();
                 
                 console.log('Service Worker activated successfully');
                 
-                // クライアントに更新通知
                 const clients = await self.clients.matchAll();
                 clients.forEach(client => {
                     client.postMessage({
@@ -301,19 +256,14 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-/**
- * フェッチイベント処理
- */
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = request.url;
     
-    // GET リクエストのみ処理
     if (request.method !== 'GET') {
         return;
     }
     
-    // キャッシュ可能なリソースのみ処理
     if (!isCacheable(url)) {
         return;
     }
@@ -336,7 +286,6 @@ self.addEventListener('fetch', (event) => {
             } catch (error) {
                 console.error('Fetch error:', error);
                 
-                // 最終的なフォールバック
                 if (request.destination === 'document') {
                     const fallbackResponse = await caches.match('./index.html');
                     if (fallbackResponse) {
@@ -344,7 +293,6 @@ self.addEventListener('fetch', (event) => {
                     }
                 }
                 
-                // エラーレスポンス
                 return new Response(`
                     <!DOCTYPE html>
                     <html lang="ja">
@@ -361,29 +309,44 @@ self.addEventListener('fetch', (event) => {
                                 align-items: center;
                                 min-height: 100vh;
                                 margin: 0;
-                                background: #f5f5f5;
-                                color: #333;
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
                                 text-align: center;
+                            }
+                            .container {
+                                background: rgba(255, 255, 255, 0.1);
+                                backdrop-filter: blur(10px);
+                                border-radius: 20px;
+                                padding: 2rem;
+                                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
                             }
                             .icon { font-size: 4rem; margin-bottom: 1rem; }
                             .title { font-size: 1.5rem; margin-bottom: 0.5rem; font-weight: 600; }
-                            .message { color: #666; margin-bottom: 2rem; }
+                            .message { opacity: 0.8; margin-bottom: 2rem; }
                             .retry-btn {
                                 padding: 0.75rem 1.5rem;
-                                background: #1976d2;
+                                background: rgba(255, 255, 255, 0.2);
                                 color: white;
-                                border: none;
+                                border: 1px solid rgba(255, 255, 255, 0.3);
                                 border-radius: 0.5rem;
                                 font-size: 1rem;
                                 cursor: pointer;
+                                backdrop-filter: blur(10px);
+                                transition: all 0.3s ease;
+                            }
+                            .retry-btn:hover {
+                                background: rgba(255, 255, 255, 0.3);
+                                transform: translateY(-2px);
                             }
                         </style>
                     </head>
                     <body>
-                        <div class="icon">📱</div>
-                        <h1 class="title">オフラインです</h1>
-                        <p class="message">インターネット接続を確認してください</p>
-                        <button class="retry-btn" onclick="location.reload()">再試行</button>
+                        <div class="container">
+                            <div class="icon">📱</div>
+                            <h1 class="title">オフラインです</h1>
+                            <p class="message">インターネット接続を確認してください</p>
+                            <button class="retry-btn" onclick="location.reload()">再試行</button>
+                        </div>
                     </body>
                     </html>
                 `, {
@@ -399,9 +362,6 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
-/**
- * メッセージハンドリング
- */
 self.addEventListener('message', (event) => {
     const { data } = event;
     const client = event.source;
@@ -437,7 +397,6 @@ self.addEventListener('message', (event) => {
             break;
             
         case 'FORCE_UPDATE':
-            // 強制アップデート
             caches.delete(CACHE_NAME).then(() => {
                 return caches.open(CACHE_NAME);
             }).then(cache => {
@@ -468,9 +427,6 @@ self.addEventListener('message', (event) => {
     }
 });
 
-/**
- * バックグラウンド同期
- */
 self.addEventListener('sync', (event) => {
     switch (event.tag) {
         case 'background-sync':
@@ -482,9 +438,6 @@ self.addEventListener('sync', (event) => {
     }
 });
 
-/**
- * プッシュ通知（将来の拡張用）
- */
 self.addEventListener('push', (event) => {
     if (!event.data) return;
     
@@ -517,22 +470,17 @@ self.addEventListener('push', (event) => {
     }
 });
 
-/**
- * 通知クリック処理
- */
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     
     if (event.action === 'open' || !event.action) {
         event.waitUntil(
             clients.matchAll({ type: 'window' }).then(clientList => {
-                // 既存のウィンドウがあれば前面に
                 for (const client of clientList) {
                     if (client.url.includes('index.html') && 'focus' in client) {
                         return client.focus();
                     }
                 }
-                // 新しいウィンドウを開く
                 if (clients.openWindow) {
                     return clients.openWindow('./index.html');
                 }
@@ -541,9 +489,6 @@ self.addEventListener('notificationclick', (event) => {
     }
 });
 
-/**
- * エラーハンドリング
- */
 self.addEventListener('error', (event) => {
     console.error('Service Worker error:', event.error);
 });
@@ -556,29 +501,20 @@ self.addEventListener('unhandledrejection', (event) => {
 // Background Tasks
 // ==========================================================================
 
-/**
- * バックグラウンド同期処理
- */
 async function doBackgroundSync() {
     try {
         console.log('Performing background sync...');
         
-        // キャッシュの健全性チェック
         const cache = await caches.open(CACHE_NAME);
         const cachedRequests = await cache.keys();
         
         console.log(`Cache contains ${cachedRequests.length} items`);
-        
-        // 必要に応じて追加の同期処理を実装
         
     } catch (error) {
         console.error('Background sync failed:', error);
     }
 }
 
-/**
- * 古いキャッシュのクリーンアップ
- */
 async function cleanupOldCaches() {
     try {
         const cacheNames = await caches.keys();
@@ -594,22 +530,17 @@ async function cleanupOldCaches() {
     }
 }
 
-/**
- * 定期的なヘルスチェック
- */
 async function performHealthCheck() {
     try {
         const cache = await caches.open(CACHE_NAME);
         const cachedUrls = await cache.keys();
         
-        // 重要なリソースがキャッシュされているかチェック
         const missingUrls = CACHE_URLS.filter(url => 
             !cachedUrls.some(request => request.url.endsWith(url))
         );
         
         if (missingUrls.length > 0) {
             console.warn('Missing cached resources:', missingUrls);
-            // 必要に応じて再キャッシュ
             await Promise.allSettled(
                 missingUrls.map(url => cache.add(url))
             );
@@ -620,9 +551,8 @@ async function performHealthCheck() {
     }
 }
 
-// 定期的なヘルスチェックの実行（開発時のみ）
 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    setInterval(performHealthCheck, 5 * 60 * 1000); // 5分毎
+    setInterval(performHealthCheck, 5 * 60 * 1000);
 }
 
 console.log('Service Worker loaded successfully - Version:', CACHE_NAME);

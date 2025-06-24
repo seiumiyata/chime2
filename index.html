@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>チャイム通知システム</title>
+    <meta name="description" content="Teams チャネル宛てチャイム通知PWA">
+    <meta name="theme-color" content="#1976d2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="チャイム通知">
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="assets/icons/192x192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/192x192.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app" class="theme-light">
+        <!-- ローディング画面 -->
+        <div id="loading-screen" class="loading-screen">
+            <div class="loading-spinner"></div>
+            <p>読み込み中...</p>
+        </div>
+
+        <!-- エラー表示 -->
+        <div id="error-toast" class="error-toast hidden">
+            <span class="error-icon">⚠</span>
+            <span class="error-message"></span>
+            <button class="error-close" onclick="hideError()">×</button>
+        </div>
+
+        <!-- 通知画面 -->
+        <div id="main-screen" class="main-screen hidden">
+            <header class="header">
+                <h1 class="app-title">
+                    <span class="title-icon">🔔</span>
+                    チャイム通知システム
+                </h1>
+                <div class="header-actions">
+                    <button id="theme-toggle" class="icon-button" title="テーマ切替" aria-label="テーマ切替">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <button id="admin-toggle" class="icon-button" title="管理者設定" aria-label="管理者設定">
+                        <span class="admin-icon">⚙️</span>
+                    </button>
+                </div>
+            </header>
+
+            <main class="main-content">
+                <div class="selection-area">
+                    <div class="form-group">
+                        <label for="company-select" class="form-label">会社</label>
+                        <div class="select-wrapper">
+                            <select id="company-select" class="form-select" required>
+                                <option value="">選択してください</option>
+                            </select>
+                            <span class="select-arrow">▼</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="department-select" class="form-label">部署</label>
+                        <div class="select-wrapper">
+                            <select id="department-select" class="form-select" disabled required>
+                                <option value="">選択してください</option>
+                            </select>
+                            <span class="select-arrow">▼</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="member-select" class="form-label">担当者</label>
+                        <div class="select-wrapper">
+                            <select id="member-select" class="form-select" disabled required>
+                                <option value="">選択してください</option>
+                            </select>
+                            <span class="select-arrow">▼</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="chime-select" class="form-label">チャイム音</label>
+                        <div class="select-wrapper">
+                            <select id="chime-select" class="form-select" required>
+                                <option value="">選択してください</option>
+                            </select>
+                            <span class="select-arrow">▼</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-area">
+                    <button id="notify-btn" class="notify-button ripple-button" disabled>
+                        <span class="button-text">🔔 通知送信</span>
+                        <div class="button-loader hidden">
+                            <div class="loader-spinner"></div>
+                        </div>
+                    </button>
+                    
+                    <div class="status-info">
+                        <span id="online-status" class="status-indicator online">
+                            <span class="status-dot"></span>
+                            オンライン
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 波形アニメーション -->
+                <div id="wave-container" class="wave-container hidden">
+                    <canvas id="wave-canvas" class="wave-canvas"></canvas>
+                    <div class="wave-particles">
+                        <div class="particle"></div>
+                        <div class="particle"></div>
+                        <div class="particle"></div>
+                        <div class="particle"></div>
+                        <div class="particle"></div>
+                    </div>
+                </div>
+
+                <!-- 通知結果 -->
+                <div id="notification-result" class="notification-result hidden">
+                    <div class="result-content">
+                        <span class="result-icon"></span>
+                        <span class="result-message"></span>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- 管理者画面 -->
+        <div id="admin-screen" class="admin-screen hidden">
+            <!-- 認証画面 -->
+            <div id="auth-screen" class="auth-screen">
+                <div class="auth-card">
+                    <h2>🔐 管理者認証</h2>
+                    <div class="form-group">
+                        <input type="password" id="admin-password" class="form-input" placeholder="パスワードを入力" autocomplete="current-password">
+                        <button id="auth-btn" class="auth-button">ログイン</button>
+                    </div>
+                    <button id="back-to-main" class="back-button">← 戻る</button>
+                </div>
+            </div>
+
+            <!-- 管理コンテンツ -->
+            <div id="admin-content" class="admin-content hidden">
+                <header class="admin-header">
+                    <h1>⚙️ 管理者設定</h1>
+                    <div class="header-actions">
+                        <button id="admin-theme-toggle" class="icon-button" title="テーマ切替">
+                            <span class="theme-icon">🌙</span>
+                        </button>
+                        <button id="admin-logout" class="icon-button" title="ログアウト">
+                            <span>🚪</span>
+                        </button>
+                    </div>
+                </header>
+
+                <nav class="admin-nav">
+                    <button class="nav-tab active" data-tab="companies">🏢 会社</button>
+                    <button class="nav-tab" data-tab="departments">🏬 部署</button>
+                    <button class="nav-tab" data-tab="members">👤 担当者</button>
+                    <button class="nav-tab" data-tab="chimes">🔔 チャイム音</button>
+                    <button class="nav-tab" data-tab="channels">📢 チャネル</button>
+                </nav>
+
+                <div class="tab-content">
+                    <!-- 会社管理 -->
+                    <div id="companies-tab" class="tab-panel active">
+                        <div class="panel-header">
+                            <h3>会社管理</h3>
+                            <button id="add-company-btn" class="add-button">+ 追加</button>
+                        </div>
+                        <div class="add-form hidden" id="company-form">
+                            <input type="text" id="company-name" class="form-input" placeholder="会社名">
+                            <div class="form-actions">
+                                <button id="save-company" class="save-button">保存</button>
+                                <button id="cancel-company" class="cancel-button">キャンセル</button>
+                            </div>
+                        </div>
+                        <div id="companies-list" class="items-list"></div>
+                    </div>
+
+                    <!-- 部署管理 -->
+                    <div id="departments-tab" class="tab-panel hidden">
+                        <div class="panel-header">
+                            <h3>部署管理</h3>
+                            <button id="add-department-btn" class="add-button">+ 追加</button>
+                        </div>
+                        <div class="add-form hidden" id="department-form">
+                            <select id="department-company" class="form-select">
+                                <option value="">会社を選択</option>
+                            </select>
+                            <input type="text" id="department-name" class="form-input" placeholder="部署名">
+                            <div class="form-actions">
+                                <button id="save-department" class="save-button">保存</button>
+                                <button id="cancel-department" class="cancel-button">キャンセル</button>
+                            </div>
+                        </div>
+                        <div id="departments-list" class="items-list"></div>
+                    </div>
+
+                    <!-- 担当者管理 -->
+                    <div id="members-tab" class="tab-panel hidden">
+                        <div class="panel-header">
+                            <h3>担当者管理</h3>
+                            <button id="add-member-btn" class="add-button">+ 追加</button>
+                        </div>
+                        <div class="add-form hidden" id="member-form">
+                            <select id="member-department" class="form-select">
+                                <option value="">部署を選択</option>
+                            </select>
+                            <input type="text" id="member-name" class="form-input" placeholder="担当者名">
+                            <div class="form-actions">
+                                <button id="save-member" class="save-button">保存</button>
+                                <button id="cancel-member" class="cancel-button">キャンセル</button>
+                            </div>
+                        </div>
+                        <div id="members-list" class="items-list"></div>
+                    </div>
+
+                    <!-- チャイム音管理 -->
+                    <div id="chimes-tab" class="tab-panel hidden">
+                        <div class="panel-header">
+                            <h3>チャイム音管理</h3>
+                            <button id="add-chime-btn" class="add-button">+ 追加</button>
+                        </div>
+                        <div class="add-form hidden" id="chime-form">
+                            <input type="text" id="chime-name" class="form-input" placeholder="チャイム音名">
+                            <input type="file" id="chime-file" class="file-input" accept="audio/*">
+                            <div class="form-actions">
+                                <button id="save-chime" class="save-button">保存</button>
+                                <button id="cancel-chime" class="cancel-button">キャンセル</button>
+                            </div>
+                        </div>
+                        <div id="chimes-list" class="items-list"></div>
+                    </div>
+
+                    <!-- チャネル管理 -->
+                    <div id="channels-tab" class="tab-panel hidden">
+                        <div class="panel-header">
+                            <h3>Teamsチャネル管理</h3>
+                            <button id="add-channel-btn" class="add-button">+ 追加</button>
+                        </div>
+                        <div class="add-form hidden" id="channel-form">
+                            <input type="text" id="channel-name" class="form-input" placeholder="チャネル名">
+                            <input type="url" id="channel-webhook" class="form-input" placeholder="Webhook URL">
+                            <div class="form-actions">
+                                <button id="save-channel" class="save-button">保存</button>
+                                <button id="cancel-channel" class="cancel-button">キャンセル</button>
+                            </div>
+                        </div>
+                        <div id="channels-list" class="items-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 確認ダイアログ -->
+        <div id="confirm-dialog" class="modal-overlay hidden">
+            <div class="modal-dialog">
+                <h3 id="confirm-title">確認</h3>
+                <p id="confirm-message">この操作を実行しますか？</p>
+                <div class="modal-actions">
+                    <button id="confirm-yes" class="confirm-button">はい</button>
+                    <button id="confirm-no" class="cancel-button">いいえ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
